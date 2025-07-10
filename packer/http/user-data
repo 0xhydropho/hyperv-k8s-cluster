@@ -1,0 +1,26 @@
+#cloud-config
+autoinstall:
+  version: 1
+  identity:
+    hostname: ubuntu
+    username: ubuntu
+    password: "$6$rounds=4096$.5NfVX7b3eCYEEqS$ie587iocARQzyiPN/0.nFuy2tdYHlZCmV7rVUqao2xFUdpcdfvZr4sMLiDC3r9/u0YGssCjDUIIv4t0UNEKOF/"  # "ubuntu"
+  ssh:
+    install-server: true
+    allow-pw: true
+  keyboard:
+    layout: us
+  locale: en_US.UTF-8
+  storage:
+    layout:
+      name: direct
+  packages:
+    - openssh-server
+    - linux-virtual
+    - linux-cloud-tools-virtual
+    - linux-tools-virtual
+  late-commands:
+    - curtin in-target -- systemctl enable ssh
+    - curtin in-target -- bash -c "echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/ubuntu"
+    - curtin in-target -- chmod 440 /etc/sudoers.d/ubuntu
+  shutdown: reboot

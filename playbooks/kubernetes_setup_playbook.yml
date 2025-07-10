@@ -1,0 +1,132 @@
+- hosts: all
+  become: yes
+  remote_user: ubuntu
+  tasks:
+  - name: Update APT packages
+    apt:
+      update_cache: yes
+
+  - name: Reboot
+    reboot:
+
+  - name: Disable swap
+    shell: swapoff -a
+
+  - name: Disable swap in fstab
+    replace:
+      path: /etc/fstab
+      regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+      replace: '# \1'
+
+  - name: Create an empty configuration file for containerd
+    file:
+      path: /etc/modules-load.d/containerd.conf
+      state: touch
+  
+  - name: Configure modules for containerd
+    blockinfile:
+      path: /etc/modules-load.d/containerd.conf
+      block: |
+        overlay
+        br_netfilter
+  
+  - name: Loading required modules
+    shell: |
+      modprobe overlay
+      modprobe br_netfilter
+  
+  - name: Create an empty config for kubernetes sysctl params
+    file:
+      path: /etc/sysctl.d/kubernetes.conf
+      state: touch
+
+  - name: Add configuration for kubernetes
+    blockinfile:
+      path: /etc/sysctl.d/kubernetes.conf
+      block: |
+        net.bridge.bridge-nf-call-ip6tables = 1
+        net.bridge.bridge-nf-call-iptables = 1
+        net.ipv4.ip_forward = 1
+
+  - name: Apply current config without reboot
+    command: sysctl --system
+
+  - name: Install packages needed for installing containerd
+    apt:
+      name: "{{ packages }}"
+      state: present
+    vars:
+      packages:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gpg
+  
+  - name: Ensure keyrings directory exists
+    file:
+      path: /etc/apt/keyrings
+      state: directory
+      mode: '0755'
+
+  - name: Download docker GPG key manually
+    shell: curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    args:
+      creates: /etc/apt/keyrings/docker.asc
+
+  - name: Add docker repository
+    apt_repository:
+      repo: "deb [arch={{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+      state: present
+      update_cache: yes
+    
+  - name: Install containerd
+    apt:
+      name: containerd.io
+      state: present
+
+  - name: Create containerd directory
+    file:
+      path: /etc/containerd
+      state: directory
+
+  - name: Add containerd configuration
+    shell: containerd config default | tee /etc/containerd/config.toml
+
+  - name: Configuring cgroup
+    shell: sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
+
+  - name: Restart and enable containerd
+    systemd:
+      name: containerd
+      state: restarted
+      enabled: yes
+      daemon-reload: yes
+
+  - name: Download Kubernetes GPG key manually
+    shell: curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.33/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    args:
+      creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+  - name: Add kubernetes apt_repository
+    apt_repository:
+      repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /
+      state: present
+      update_cache: yes
+  
+  - name: Install kubectl, kubeadm and kubelet
+    apt:
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+        - kubectl
+        - kubeadm
+        - kubelet
+  
+  - name: Restart and enable kubelet
+    systemd:
+      name: kubelet
+      state: restarted
+      enabled: yes
+      daemon-reload: yes

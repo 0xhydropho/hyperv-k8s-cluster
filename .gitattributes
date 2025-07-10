@@ -1,0 +1,6 @@
+# Use LF for shell scripts and Ansible files
+*.sh text eol=lf
+playbooks/hosts text eol=lf
+
+# CRLF for windows users
+* text=auto

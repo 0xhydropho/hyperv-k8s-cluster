@@ -1,0 +1,9 @@
+/iso/*
+
+/packer/output-ubuntu
+
+/packer/packer_cache
+
+/terraform/.terraform*
+
+/terraform/terraform.tfstate*
